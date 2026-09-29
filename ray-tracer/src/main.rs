@@ -1,9 +1,9 @@
 mod app;
 mod camera;
+mod cpu_renderer;
 mod cpu_view;
 mod math;
 mod objects;
-mod renderer;
 mod scene;
 
 fn main() -> Result<(), winit::error::EventLoopError> {

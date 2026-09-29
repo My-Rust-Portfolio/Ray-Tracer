@@ -2,7 +2,7 @@ use std::sync::Arc;
 use winit::window::Window;
 
 use crate::camera::Camera;
-use crate::renderer::CpuRenderer;
+use crate::cpu_renderer::CpuRenderer;
 use crate::scene::Scene;
 use rayon::prelude::*;
 use std::num::NonZeroU32;
@@ -83,7 +83,7 @@ impl CpuView {
                 for (x, pixel) in row.iter_mut().enumerate() {
                     let x = x as u32;
                     let ray = self.camera.ray_for_pixel(x, y);
-                    let [r, g, b] = self.renderer.colour_for_ray(&self.scene, &ray);
+                    let [r, g, b] = self.renderer.shade_ray(&self.scene, &ray, 0);
                     // softbuffer expects 0xBBGGRR00 layout (little-endian u32).
                     *pixel = (b as u32) | ((g as u32) << 8) | ((r as u32) << 16);
                 }
