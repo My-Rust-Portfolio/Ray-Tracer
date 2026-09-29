@@ -18,21 +18,25 @@ fn main() -> image::ImageResult<()> {
     let renderer = CpuRenderer::new();
 
     // Pre-allocate a flat buffer of pixels.
-    let mut pixels: Vec<Rgb<u8>> = vec![Rgb([0, 0, 0]); (width * height) as usize];
+    let mut pixels: Vec<u8> = vec![0u8; (width * height * 3) as usize];
+    let bytes_per_row = (width * 3) as usize;
 
-    // Process each row in parallel.
-    (0..height).into_par_iter().for_each(|y| {
-        let row_start = (y * width) as usize;
-        let row_end = row_start + width as usize;
-        let row_pixels = &mut pixels[row_start..row_end];
+    // Parallel iterator over mutable row slices.
+    pixels
+        .par_chunks_mut(bytes_per_row)
+        .enumerate()
+        .for_each(|(y, row_bytes)| {
+            let y = y as u32;
+            for x in 0..width {
+                let ray = camera.ray_for_pixel(x, y);
+                let [r, g, b] = renderer.colour_for_ray(&scene, &ray);
 
-        for (x, pixel) in row_pixels.iter_mut().enumerate() {
-            let x = x as u32;
-            let ray = camera.ray_for_pixel(x, y);
-            let [r, g, b] = renderer.colour_for_ray(&scene, &ray);
-            *pixel = Rgb([r, g, b]);
-        }
-    });
+                let i = (x as usize) * 3;
+                row_bytes[i] = r;
+                row_bytes[i + 1] = g;
+                row_bytes[i + 2] = b;
+            }
+        });
 
     // Convert the flat buffer into an ImageBuffer.
     let image = RgbImage::from_raw(width, height, pixels).expect("pixel count mismatch");
