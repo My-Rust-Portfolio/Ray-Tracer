@@ -1,5 +1,6 @@
 mod app;
 mod camera;
+mod cpu_view;
 mod math;
 mod objects;
 mod renderer;
