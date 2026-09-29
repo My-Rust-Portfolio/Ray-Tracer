@@ -43,69 +43,68 @@ impl CpuRenderer {
     }
 
     pub fn shade_ray(&self, scene: &Scene, ray: &Ray, depth: u32) -> [u8; 3] {
-        if depth > 3 {
-            // Fallback: just sample sky if we hit max depth
-            let (u, v) = self.dir_to_uv(ray.direction);
-            return self.sample_sky(u, v);
+        if depth >= 3 {
+            return self.sample_sky_dir(ray.direction);
         }
 
         if let Some(hit) = scene.closest_hit(ray) {
             match hit.kind {
-                HitKind::Sphere(_) => self.shade_sphere(&hit, ray, depth),
+                HitKind::Sphere(_) => self.shade_sphere(scene, &hit, ray, depth),
                 HitKind::Plane(_) => self.shade_plane(&hit, ray, depth),
             }
         } else {
-            // Background: skybox
-            let (u, v) = self.dir_to_uv(ray.direction);
-            self.sample_sky(u, v)
+            self.sample_sky_dir(ray.direction)
         }
     }
 
-    fn shade_sphere(&self, hit: &Hit, ray: &Ray, depth: u32) -> [u8; 3] {
+    fn shade_sphere(&self, scene: &Scene, hit: &Hit, ray: &Ray, depth: u32) -> [u8; 3] {
         let n = hit.normal;
         let v = [-ray.direction[0], -ray.direction[1], -ray.direction[2]];
 
-        // White sun light
-        let light_dir = self.light_dir; // already normalized
-        let light_colour = [1.0, 1.0, 1.0]; // white
+        let ndotl =
+            (n[0] * self.light_dir[0] + n[1] * self.light_dir[1] + n[2] * self.light_dir[2])
+                .max(0.0);
 
-        // Simple Lambert + specular for the sun
-        let ndotl = (n[0] * light_dir[0] + n[1] * light_dir[1] + n[2] * light_dir[2]).max(0.0);
-
-        // Reflection vector for specular
         let r = [
-            2.0 * ndotl * n[0] - light_dir[0],
-            2.0 * ndotl * n[1] - light_dir[1],
-            2.0 * ndotl * n[2] - light_dir[2],
+            2.0 * ndotl * n[0] - self.light_dir[0],
+            2.0 * ndotl * n[1] - self.light_dir[1],
+            2.0 * ndotl * n[2] - self.light_dir[2],
         ];
         let rdotv = (r[0] * v[0] + r[1] * v[1] + r[2] * v[2]).max(0.0);
-        let shininess = 64.0;
-        let spec = rdotv.powf(shininess);
+        let spec = rdotv.powf(64.0);
 
-        // Very low diffuse, strong specular, plus environment reflection
-        let kd = 0.05; // almost no diffuse
-        let ks = 0.6; // strong white specular highlight
+        let local = 0.05 * ndotl + 0.6 * spec;
 
-        let mut colour = [
-            kd * light_colour[0] * ndotl + ks * spec * light_colour[0],
-            kd * light_colour[1] * ndotl + ks * spec * light_colour[1],
-            kd * light_colour[2] * ndotl + ks * spec * light_colour[2],
-        ];
-
-        // Add environment reflection (skybox) for mirror-like look
+        // Reflect the incoming ray direction, not the direction toward the camera.
         let reflect_dir = self.reflect(ray.direction, n);
-        let env = self.sample_sky_dir(reflect_dir);
 
-        let reflect_weight = 0.7; // how mirror-like the sphere is
-        colour[0] = colour[0] * (1.0 - reflect_weight) + (env[0] as f32 / 255.0) * reflect_weight;
-        colour[1] = colour[1] * (1.0 - reflect_weight) + (env[1] as f32 / 255.0) * reflect_weight;
-        colour[2] = colour[2] * (1.0 - reflect_weight) + (env[2] as f32 / 255.0) * reflect_weight;
+        // Move the new ray just outside the sphere to avoid hitting itself
+        // immediately due to floating-point rounding.
+        let epsilon = 0.001;
+        let reflected_ray = Ray {
+            origin: [
+                hit.point[0] + n[0] * epsilon,
+                hit.point[1] + n[1] * epsilon,
+                hit.point[2] + n[2] * epsilon,
+            ],
+            direction: reflect_dir,
+        };
 
-        let r = colour[0].clamp(0.0, 1.0);
-        let g = colour[1].clamp(0.0, 1.0);
-        let b = colour[2].clamp(0.0, 1.0);
+        // Unlike sample_sky_dir, this tests the plane (and other scene objects)
+        // before falling back to the sky.
+        let reflected = self.shade_ray(scene, &reflected_ray, depth + 1);
+        let reflect_weight = 0.7;
 
-        [(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8]
+        let channel = |value: u8| -> u8 {
+            let colour = local * (1.0 - reflect_weight) + (value as f32 / 255.0) * reflect_weight;
+            (colour.clamp(0.0, 1.0) * 255.0) as u8
+        };
+
+        [
+            channel(reflected[0]),
+            channel(reflected[1]),
+            channel(reflected[2]),
+        ]
     }
 
     fn shade_plane(&self, hit: &Hit, ray: &Ray, depth: u32) -> [u8; 3] {
