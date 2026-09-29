@@ -1,5 +1,5 @@
 use crate::math::Ray;
-use crate::scene::{HitKind, Scene};
+use crate::scene::{Hit, HitKind, Scene};
 use std::path::Path;
 
 pub struct CpuRenderer {
@@ -31,104 +31,71 @@ impl CpuRenderer {
 
     pub fn shade_ray(&self, scene: &Scene, ray: &Ray, depth: u32) -> [u8; 3] {
         if depth > 3 {
-            // Background gradient
-            let red = ((ray.direction[0] + 1.0) * 127.5) as u8;
-            let green = ((ray.direction[1] + 1.0) * 127.5) as u8;
-            return [red, green, 64];
+            // Fallback: just sample sky if we hit max depth
+            let (u, v) = self.dir_to_uv(ray.direction);
+            return self.sample_sky(u, v);
         }
 
         if let Some(hit) = scene.closest_hit(ray) {
             match hit.kind {
-                HitKind::Sphere(_) => self.shade_sphere(scene, &hit, ray, depth),
-                HitKind::Plane(_) => self.shade_plane(&hit),
+                HitKind::Sphere(_) => self.shade_sphere(&hit, ray, depth),
+                HitKind::Plane(_) => self.shade_plane(&hit, ray, depth),
             }
         } else {
-            // Background gradient
+            // Background: skybox
             let (u, v) = self.dir_to_uv(ray.direction);
             self.sample_sky(u, v)
         }
     }
 
-    fn shade_sphere(
-        &self,
-        scene: &Scene,
-        hit: &crate::scene::Hit<'_>,
-        ray: &Ray,
-        depth: u32,
-    ) -> [u8; 3] {
-        let normal = hit.normal;
-        let base_colour = [0.9, 0.2, 0.2];
-        let ambient = 0.05;
-        let kd = 0.6;
-        let ks = 0.4;
-        let shininess = 32.0;
+    fn shade_sphere(&self, hit: &Hit, ray: &Ray, depth: u32) -> [u8; 3] {
+        let n = hit.normal;
+        let v = [-ray.direction[0], -ray.direction[1], -ray.direction[2]];
 
-        // Diffuse
-        let mut nl = normal[0] * self.light_dir[0]
-            + normal[1] * self.light_dir[1]
-            + normal[2] * self.light_dir[2];
-        if nl < 0.0 {
-            nl = 0.0;
-        }
+        // White sun light
+        let light_dir = self.light_dir; // already normalized
+        let light_colour = [1.0, 1.0, 1.0]; // white
 
-        // Specular (Blinn–Phong)
-        let view_dir = [-ray.direction[0], -ray.direction[1], -ray.direction[2]];
-        let mut half_dir = [
-            self.light_dir[0] + view_dir[0],
-            self.light_dir[1] + view_dir[1],
-            self.light_dir[2] + view_dir[2],
+        // Simple Lambert + specular for the sun
+        let ndotl = (n[0] * light_dir[0] + n[1] * light_dir[1] + n[2] * light_dir[2]).max(0.0);
+
+        // Reflection vector for specular
+        let r = [
+            2.0 * ndotl * n[0] - light_dir[0],
+            2.0 * ndotl * n[1] - light_dir[1],
+            2.0 * ndotl * n[2] - light_dir[2],
         ];
-        let hlen = f32::sqrt(
-            half_dir[0] * half_dir[0] + half_dir[1] * half_dir[1] + half_dir[2] * half_dir[2],
-        );
-        half_dir[0] /= hlen;
-        half_dir[1] /= hlen;
-        half_dir[2] /= hlen;
+        let rdotv = (r[0] * v[0] + r[1] * v[1] + r[2] * v[2]).max(0.0);
+        let shininess = 64.0;
+        let spec = rdotv.powf(shininess);
 
-        let mut nh = normal[0] * half_dir[0] + normal[1] * half_dir[1] + normal[2] * half_dir[2];
-        if nh < 0.0 {
-            nh = 0.0;
-        }
-        let spec = nh.powf(shininess);
+        // Very low diffuse, strong specular, plus environment reflection
+        let kd = 0.05; // almost no diffuse
+        let ks = 0.6; // strong white specular highlight
 
-        let intensity = ambient + kd * nl + ks * spec;
         let mut colour = [
-            base_colour[0] * intensity,
-            base_colour[1] * intensity,
-            base_colour[2] * intensity,
+            kd * light_colour[0] * ndotl + ks * spec * light_colour[0],
+            kd * light_colour[1] * ndotl + ks * spec * light_colour[1],
+            kd * light_colour[2] * ndotl + ks * spec * light_colour[2],
         ];
 
-        // Reflection
-        let reflect_dir = self.reflect(ray.direction, normal);
-        let epsilon = 1e-3;
-        let reflect_origin = [
-            hit.point[0] + reflect_dir[0] * epsilon + normal[0] * epsilon,
-            hit.point[1] + reflect_dir[1] * epsilon + normal[1] * epsilon,
-            hit.point[2] + reflect_dir[2] * epsilon + normal[2] * epsilon,
-        ];
+        // Add environment reflection (skybox) for mirror-like look
+        let reflect_dir = self.reflect(ray.direction, n);
+        let env = self.sample_sky_dir(reflect_dir);
 
-        let reflect_ray = crate::math::Ray {
-            origin: reflect_origin,
-            direction: reflect_dir,
-        };
-        let reflect_colour = self.shade_ray(scene, &reflect_ray, depth + 1);
+        let reflect_weight = 0.7; // how mirror-like the sphere is
+        colour[0] = colour[0] * (1.0 - reflect_weight) + (env[0] as f32 / 255.0) * reflect_weight;
+        colour[1] = colour[1] * (1.0 - reflect_weight) + (env[1] as f32 / 255.0) * reflect_weight;
+        colour[2] = colour[2] * (1.0 - reflect_weight) + (env[2] as f32 / 255.0) * reflect_weight;
 
-        let reflect_weight = 0.5;
-        colour[0] = colour[0] * (1.0 - reflect_weight)
-            + (reflect_colour[0] as f32 / 255.0) * reflect_weight;
-        colour[1] = colour[1] * (1.0 - reflect_weight)
-            + (reflect_colour[1] as f32 / 255.0) * reflect_weight;
-        colour[2] = colour[2] * (1.0 - reflect_weight)
-            + (reflect_colour[2] as f32 / 255.0) * reflect_weight;
+        let r = colour[0].clamp(0.0, 1.0);
+        let g = colour[1].clamp(0.0, 1.0);
+        let b = colour[2].clamp(0.0, 1.0);
 
-        [
-            (colour[0] * 255.0) as u8,
-            (colour[1] * 255.0) as u8,
-            (colour[2] * 255.0) as u8,
-        ]
+        [(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8]
     }
 
-    fn shade_plane(&self, hit: &crate::scene::Hit<'_>) -> [u8; 3] {
+    fn shade_plane(&self, hit: &Hit, ray: &Ray, depth: u32) -> [u8; 3] {
         let normal = hit.normal;
         let base_colour = [0.7, 0.7, 0.7];
         let ambient = 0.1;
@@ -200,5 +167,10 @@ impl CpuRenderer {
         let c0 = c00 as f32 * (1.0 - fx) + c10 as f32 * fx;
         let c1 = c01 as f32 * (1.0 - fx) + c11 as f32 * fx;
         c0 * (1.0 - fy) + c1 * fy
+    }
+
+    fn sample_sky_dir(&self, dir: [f32; 3]) -> [u8; 3] {
+        let (u, v) = self.dir_to_uv(dir);
+        self.sample_sky(u, v)
     }
 }
