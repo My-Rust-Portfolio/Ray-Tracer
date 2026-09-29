@@ -1,15 +1,18 @@
-pub struct Ray {
-    pub direction: [f32; 3],
-}
+use crate::math::Ray;
 
 pub struct Camera {
+    origin: [f32; 3],
     width: u32,
     height: u32,
 }
 
 impl Camera {
     pub fn new(width: u32, height: u32) -> Self {
-        Self { width, height }
+        Self {
+            origin: [0.0, 0.0, 0.0],
+            width,
+            height,
+        }
     }
 
     pub fn ray_for_pixel(&self, x: u32, y: u32) -> Ray {
@@ -17,6 +20,7 @@ impl Camera {
         let viewport_y = 1.0 - 2.0 * (y as f32 + 0.5) / self.height as f32;
 
         Ray {
+            origin: self.origin,
             direction: [viewport_x, viewport_y, -1.0],
         }
     }
