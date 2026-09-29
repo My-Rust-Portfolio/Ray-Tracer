@@ -139,8 +139,8 @@ impl CpuView {
             move_dir[2] += self.camera.right[2];
         }
         // Up/down
-        if self.keys_pressed[KeyCode::ShiftLeft as usize]
-            || self.keys_pressed[KeyCode::ShiftRight as usize]
+        if self.keys_pressed[KeyCode::ControlLeft as usize]
+            || self.keys_pressed[KeyCode::ControlRight as usize]
         {
             move_dir[1] -= 1.0;
         }
