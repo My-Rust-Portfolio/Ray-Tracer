@@ -1,10 +1,12 @@
 mod camera;
 mod math;
 mod objects;
+mod renderer;
 mod scene;
 
 use camera::Camera;
 use image::{Rgb, RgbImage};
+use renderer::CpuRenderer;
 use scene::Scene;
 
 fn main() -> image::ImageResult<()> {
@@ -12,21 +14,14 @@ fn main() -> image::ImageResult<()> {
     let height = 256;
     let camera = Camera::new(width, height);
     let scene = Scene::new();
+    let renderer = CpuRenderer::new();
     let mut image = RgbImage::new(width, height);
 
     for y in 0..height {
         for x in 0..width {
             let ray = camera.ray_for_pixel(x, y);
-
-            let colour = if scene.closest_hit(&ray).is_some() {
-                Rgb([200, 50, 50])
-            } else {
-                let red = ((ray.direction[0] + 1.0) * 127.5) as u8;
-                let green = ((ray.direction[1] + 1.0) * 127.5) as u8;
-                Rgb([red, green, 64])
-            };
-
-            image.put_pixel(x, y, colour);
+            let [r, g, b] = renderer.colour_for_ray(&scene, &ray);
+            image.put_pixel(x, y, Rgb([r, g, b]));
         }
     }
 

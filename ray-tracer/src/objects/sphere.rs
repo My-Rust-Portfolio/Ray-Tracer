@@ -34,4 +34,13 @@ impl Sphere {
 
         Some(t)
     }
+
+    pub fn normal_at(&self, point: [f32; 3]) -> [f32; 3] {
+        let nx = point[0] - self.center[0];
+        let ny = point[1] - self.center[1];
+        let nz = point[2] - self.center[2];
+
+        let len = (nx * nx + ny * ny + nz * nz).sqrt();
+        [nx / len, ny / len, nz / len]
+    }
 }
