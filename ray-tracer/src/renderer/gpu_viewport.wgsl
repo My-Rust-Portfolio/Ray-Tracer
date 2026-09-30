@@ -31,10 +31,14 @@ struct SurfaceHit {
     specular: f32,
     shininess: f32,
     reflectivity: f32,
+    texture_kind: u32,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> spheres: array<GpuSphere>;
+@group(0) @binding(2) var ground_texture: texture_2d<f32>;
+@group(0) @binding(3) var sky_texture: texture_2d<f32>;
+@group(0) @binding(4) var image_sampler: sampler;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -115,6 +119,7 @@ fn trace_scene(origin: vec3<f32>, ray_direction: vec3<f32>) -> SurfaceHit {
         0.0,
         1.0,
         0.0,
+        0u,
     );
     let sphere_count = min(params.scene.x, arrayLength(&spheres));
     for (var i = 0u; i < sphere_count; i += 1u) {
@@ -142,6 +147,7 @@ fn trace_scene(origin: vec3<f32>, ray_direction: vec3<f32>) -> SurfaceHit {
                     sphere.properties.y,
                     sphere.properties.z,
                     sphere.properties.w,
+                    0u,
                 );
             }
         }
@@ -162,6 +168,7 @@ fn trace_scene(origin: vec3<f32>, ray_direction: vec3<f32>) -> SurfaceHit {
                 params.plane_properties.y,
                 params.plane_properties.z,
                 params.plane_properties.w,
+                1u,
             );
         }
     }
@@ -169,8 +176,10 @@ fn trace_scene(origin: vec3<f32>, ray_direction: vec3<f32>) -> SurfaceHit {
 }
 
 fn sample_sky(ray_direction: vec3<f32>) -> vec3<f32> {
-    let sky_t = 0.5 * (ray_direction.y + 1.0);
-    return mix(vec3<f32>(0.015, 0.02, 0.04), vec3<f32>(0.35, 0.55, 0.85), sky_t);
+    let phi = atan2(ray_direction.x, ray_direction.z);
+    let theta = atan2(ray_direction.y, length(ray_direction.xz));
+    let uv = vec2<f32>(0.5 + phi / (2.0 * 3.14159265), 0.5 - theta / 3.14159265);
+    return textureSampleLevel(sky_texture, image_sampler, uv, 0.0).rgb;
 }
 
 fn trace_path(initial_direction: vec3<f32>) -> vec3<f32> {
@@ -187,7 +196,8 @@ fn trace_path(initial_direction: vec3<f32>) -> vec3<f32> {
         }
 
         let local_color = shade_surface(
-            hit.base,
+            hit.base * select(vec3<f32>(1.0), textureSampleLevel(ground_texture, image_sampler,
+                fract(hit.point.xz * 0.2), 0.0).rgb, hit.texture_kind == 1u),
             hit.ambient,
             hit.shadow_ambient,
             hit.diffuse,
