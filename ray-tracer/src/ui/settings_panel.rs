@@ -9,18 +9,15 @@ pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, mode: &mut ViewMod
     egui::ComboBox::from_id_salt("rendering-path")
         .selected_text(match mode {
             ViewMode::Cpu => "CPU ray tracer",
-            ViewMode::GpuPresentationPreview => "GPU presentation preview",
+            ViewMode::Gpu => "GPU ray tracer · basic",
         })
         .show_ui(ui, |ui| {
             ui.selectable_value(mode, ViewMode::Cpu, "CPU ray tracer");
-            ui.selectable_value(
-                mode,
-                ViewMode::GpuPresentationPreview,
-                "GPU presentation preview",
-            );
+            ui.selectable_value(mode, ViewMode::Gpu, "GPU ray tracer · basic");
         });
-    if *mode == ViewMode::GpuPresentationPreview {
-        ui.small("Direct GPU drawing preview; ray tracing is not implemented yet.");
+    if *mode == ViewMode::Gpu {
+        ui.small("Basic GPU pass: spheres, ground, direct lighting, and sky.");
+        ui.small("Textures, shadows, reflections, and SSAA are CPU-only for now.");
     }
 
     ui.add_space(16.0);
@@ -31,27 +28,29 @@ pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, mode: &mut ViewMod
         ui.label("Measuring FPS…");
     }
 
-    ui.add_space(16.0);
-    ui.label("Anti-aliasing");
-    egui::ComboBox::from_id_salt("ssaa")
-        .selected_text(match settings.samples_per_axis {
-            1 => "Off · 1 sample",
-            2 => "2×2 · 4 samples",
-            3 => "3×3 · 9 samples",
-            _ => "4×4 · 16 samples",
-        })
-        .show_ui(ui, |ui| {
-            ui.selectable_value(&mut settings.samples_per_axis, 1, "Off · 1 sample");
-            ui.selectable_value(&mut settings.samples_per_axis, 2, "2×2 · 4 samples");
-            ui.selectable_value(&mut settings.samples_per_axis, 3, "3×3 · 9 samples");
-            ui.selectable_value(&mut settings.samples_per_axis, 4, "4×4 · 16 samples");
-        });
-    ui.label(format!(
-        "{} rays per pixel",
-        settings.samples_per_axis.pow(2)
-    ));
-    ui.add_space(12.0);
-    ui.checkbox(&mut settings.shadows_enabled, "Shadows");
+    ui.add_enabled_ui(*mode == ViewMode::Cpu, |ui| {
+        ui.add_space(16.0);
+        ui.label("Anti-aliasing");
+        egui::ComboBox::from_id_salt("ssaa")
+            .selected_text(match settings.samples_per_axis {
+                1 => "Off · 1 sample",
+                2 => "2×2 · 4 samples",
+                3 => "3×3 · 9 samples",
+                _ => "4×4 · 16 samples",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut settings.samples_per_axis, 1, "Off · 1 sample");
+                ui.selectable_value(&mut settings.samples_per_axis, 2, "2×2 · 4 samples");
+                ui.selectable_value(&mut settings.samples_per_axis, 3, "3×3 · 9 samples");
+                ui.selectable_value(&mut settings.samples_per_axis, 4, "4×4 · 16 samples");
+            });
+        ui.label(format!(
+            "{} rays per pixel",
+            settings.samples_per_axis.pow(2)
+        ));
+        ui.add_space(12.0);
+        ui.checkbox(&mut settings.shadows_enabled, "Shadows");
+    });
     ui.add_space(16.0);
     ui.separator();
     ui.label("Click and drag in the view to look around.");

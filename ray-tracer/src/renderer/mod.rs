@@ -6,7 +6,7 @@ pub mod world;
 pub enum ViewMode {
     #[default]
     Cpu,
-    GpuPresentationPreview,
+    Gpu,
 }
 
 /// Backend-independent controls consumed by every renderer implementation.

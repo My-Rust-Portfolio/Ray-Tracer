@@ -68,7 +68,7 @@ impl eframe::App for App {
                 self.viewport
                     .show(ui, &mut self.world, &mut self.cpu_backend, self.settings)
             }
-            ViewMode::GpuPresentationPreview => {
+            ViewMode::Gpu => {
                 if let Some(gpu_viewport) = &self.gpu_viewport {
                     gpu_viewport.show(ui, &mut self.world);
                 } else {
