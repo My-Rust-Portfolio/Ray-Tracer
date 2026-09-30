@@ -16,8 +16,8 @@ pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, mode: &mut ViewMod
             ui.selectable_value(mode, ViewMode::Gpu, "GPU ray tracer · basic");
         });
     if *mode == ViewMode::Gpu {
-        ui.small("GPU pass: spheres, ground, direct lighting, hard shadows, and sky.");
-        ui.small("Textures, reflections, and SSAA are CPU-only for now.");
+        ui.small("GPU pass: spheres, ground, direct lighting, shadows, reflections, and sky.");
+        ui.small("Textures and SSAA are CPU-only for now.");
     }
 
     ui.add_space(16.0);
