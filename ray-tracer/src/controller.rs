@@ -37,7 +37,7 @@ impl CameraController {
     }
 
     pub fn mouse_delta(&mut self, dx: f32, dy: f32) {
-        self.yaw -= dx * self.mouse_sensitivity;
+        self.yaw += dx * self.mouse_sensitivity;
         self.pitch -= dy * self.mouse_sensitivity;
     }
 
