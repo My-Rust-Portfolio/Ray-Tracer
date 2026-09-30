@@ -2,12 +2,20 @@ use eframe::egui;
 
 use crate::renderer::RenderSettings;
 
-pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings) {
+pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, fps: f32) {
     ui.heading("Ray tracer");
     ui.separator();
     ui.label("Rendering backend");
     ui.label("CPU · active");
     ui.add_enabled(false, egui::Button::new("GPU · coming later"));
+
+    ui.add_space(16.0);
+    ui.label("Performance");
+    if fps > 0.0 {
+        ui.label(format!("{fps:.1} FPS"));
+    } else {
+        ui.label("Measuring FPS…");
+    }
 
     ui.add_space(16.0);
     ui.label("Anti-aliasing");
