@@ -1,3 +1,4 @@
+use crate::material::Material;
 use crate::math::Ray;
 use crate::objects::{Plane, Sphere};
 
@@ -12,6 +13,7 @@ pub struct Hit {
     pub point: [f32; 3],
     pub normal: [f32; 3],
     pub kind: HitKind,
+    pub material: Material,
 }
 
 pub struct Scene {
@@ -26,6 +28,7 @@ impl Scene {
             plane: Plane {
                 point: [0.0, -1.5, 0.0],
                 normal: [0.0, 1.0, 0.0],
+                material: Material::ground_default(),
             },
         };
         scene.add_sphere(Sphere::new([0.0, -0.5, -3.0], 1.0));
@@ -51,6 +54,7 @@ impl Scene {
                     point,
                     normal: sphere.normal_at(point),
                     kind: HitKind::Sphere,
+                    material: sphere.material,
                 });
             }
         }
@@ -64,6 +68,7 @@ impl Scene {
                 point,
                 normal: self.plane.normal_at(point),
                 kind: HitKind::Plane,
+                material: self.plane.material,
             });
         }
 

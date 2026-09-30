@@ -1,6 +1,7 @@
 mod app;
 mod camera;
 mod controller;
+mod material;
 mod math;
 mod objects;
 mod renderer;

@@ -1,6 +1,9 @@
+use crate::material::Material;
+
 pub struct Plane {
     pub point: [f32; 3],  // a point on the plane
     pub normal: [f32; 3], // normalized
+    pub material: Material,
 }
 
 impl Plane {

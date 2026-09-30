@@ -1,11 +1,22 @@
+use crate::material::Material;
+
 pub struct Sphere {
     pub center: [f32; 3],
     pub radius: f32,
+    pub material: Material,
 }
 
 impl Sphere {
     pub fn new(center: [f32; 3], radius: f32) -> Self {
-        Self { center, radius }
+        Self::with_material(center, radius, Material::sphere_default())
+    }
+
+    pub fn with_material(center: [f32; 3], radius: f32, material: Material) -> Self {
+        Self {
+            center,
+            radius,
+            material,
+        }
     }
 
     pub fn intersect(&self, ray_origin: [f32; 3], ray_dir: [f32; 3]) -> Option<f32> {

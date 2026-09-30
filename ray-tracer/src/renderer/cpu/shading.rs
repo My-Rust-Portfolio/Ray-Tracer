@@ -54,7 +54,7 @@ impl CpuRenderer {
         if let Some(hit) = scene.closest_hit(ray) {
             match hit.kind {
                 HitKind::Sphere => self.shade_sphere(scene, &hit, ray, depth, settings),
-                HitKind::Plane => self.shade_plane(scene, &hit, settings),
+                HitKind::Plane => self.shade_plane(scene, &hit, ray, depth, settings),
             }
         } else {
             self.sample_sky_dir(ray.direction)
@@ -70,6 +70,7 @@ impl CpuRenderer {
         settings: RenderSettings,
     ) -> [u8; 3] {
         let n = hit.normal;
+        let material = hit.material;
         let v = [-ray.direction[0], -ray.direction[1], -ray.direction[2]];
 
         let in_shadow = settings.shadows_enabled && self.is_in_shadow(scene, hit);
@@ -84,61 +85,57 @@ impl CpuRenderer {
             2.0 * ndotl * n[2] - self.light_dir[2],
         ];
         let rdotv = (r[0] * v[0] + r[1] * v[1] + r[2] * v[2]).max(0.0);
-        let spec = if in_shadow { 0.0 } else { rdotv.powf(64.0) };
-
-        let direct = if in_shadow {
+        let specular = if in_shadow {
             0.0
         } else {
-            0.05 * ndotl + 0.6 * spec
+            material.specular * rdotv.powf(material.shininess)
         };
-        let local = 0.02 + direct;
-
-        // Reflect the incoming ray direction, not the direction toward the camera.
-        let reflect_dir = self.reflect(ray.direction, n);
-
-        // Move the new ray just outside the sphere to avoid hitting itself
-        // immediately due to floating-point rounding.
-        let epsilon = 0.001;
-        let reflected_ray = Ray {
-            origin: [
-                hit.point[0] + n[0] * epsilon,
-                hit.point[1] + n[1] * epsilon,
-                hit.point[2] + n[2] * epsilon,
-            ],
-            direction: reflect_dir,
+        let diffuse = if in_shadow {
+            0.0
+        } else {
+            material.diffuse * ndotl
         };
-
-        // Unlike sample_sky_dir, this tests the plane (and other scene objects)
-        // before falling back to the sky.
-        let reflected = self.shade_ray(scene, &reflected_ray, depth + 1, settings);
-        let reflect_weight = 0.7;
-
-        let channel = |value: u8| -> u8 {
-            let colour = local * (1.0 - reflect_weight) + (value as f32 / 255.0) * reflect_weight;
-            (colour.clamp(0.0, 1.0) * 255.0) as u8
+        let ambient = if in_shadow {
+            material.shadow_ambient
+        } else {
+            material.ambient
         };
+        let local = material
+            .base_color
+            .map(|base| (base * (ambient + diffuse) + specular).clamp(0.0, 1.0));
 
-        [
-            channel(reflected[0]),
-            channel(reflected[1]),
-            channel(reflected[2]),
-        ]
+        let reflected = if material.reflectivity > 0.0 {
+            let reflected_ray = Ray {
+                origin: offset_point(hit.point, n),
+                direction: self.reflect(ray.direction, n),
+            };
+            Some(self.shade_ray(scene, &reflected_ray, depth + 1, settings))
+        } else {
+            None
+        };
+        blend_reflection(local, reflected, material.reflectivity)
     }
 
-    fn shade_plane(&self, scene: &Scene, hit: &Hit, settings: RenderSettings) -> [u8; 3] {
+    fn shade_plane(
+        &self,
+        scene: &Scene,
+        hit: &Hit,
+        ray: &Ray,
+        depth: u32,
+        settings: RenderSettings,
+    ) -> [u8; 3] {
         let normal = hit.normal;
+        let material = hit.material;
 
         // Get brick colour at this hit
         let (u, v) = self.plane_uv_from_hit(hit);
         let brick_col = self.sample_ground(u, v);
 
-        let base_colour = [
+        let texture_colour = [
             brick_col[0] as f32 / 255.0,
             brick_col[1] as f32 / 255.0,
             brick_col[2] as f32 / 255.0,
         ];
-
-        let ambient = 0.1;
 
         let mut nl = normal[0] * self.light_dir[0]
             + normal[1] * self.light_dir[1]
@@ -148,17 +145,48 @@ impl CpuRenderer {
         }
 
         let in_shadow = settings.shadows_enabled && self.is_in_shadow(scene, hit);
-        let direct = if in_shadow { 0.0 } else { 0.9 * nl };
-        // Keep the ground texture visible inside hard shadows without letting
-        // direct light leak through the occluder.
-        let shadow_ambient = if in_shadow { 0.24 } else { ambient };
-        let intensity = shadow_ambient + direct;
+        let diffuse = if in_shadow {
+            0.0
+        } else {
+            material.diffuse * nl
+        };
+        let ambient = if in_shadow {
+            material.shadow_ambient
+        } else {
+            material.ambient
+        };
+        let view = [-ray.direction[0], -ray.direction[1], -ray.direction[2]];
+        let light_reflection = [
+            2.0 * nl * normal[0] - self.light_dir[0],
+            2.0 * nl * normal[1] - self.light_dir[1],
+            2.0 * nl * normal[2] - self.light_dir[2],
+        ];
+        let specular = if in_shadow {
+            0.0
+        } else {
+            (light_reflection[0] * view[0]
+                + light_reflection[1] * view[1]
+                + light_reflection[2] * view[2])
+                .max(0.0)
+                .powf(material.shininess)
+                * material.specular
+        };
+        let local = std::array::from_fn(|channel| {
+            (texture_colour[channel] * material.base_color[channel] * (ambient + diffuse)
+                + specular)
+                .clamp(0.0, 1.0)
+        });
 
-        [
-            (base_colour[0] * intensity * 255.0) as u8,
-            (base_colour[1] * intensity * 255.0) as u8,
-            (base_colour[2] * intensity * 255.0) as u8,
-        ]
+        let reflected = if material.reflectivity > 0.0 {
+            let reflected_ray = Ray {
+                origin: offset_point(hit.point, normal),
+                direction: self.reflect(ray.direction, normal),
+            };
+            Some(self.shade_ray(scene, &reflected_ray, depth + 1, settings))
+        } else {
+            None
+        };
+        blend_reflection(local, reflected, material.reflectivity)
     }
 
     fn is_in_shadow(&self, scene: &Scene, hit: &Hit) -> bool {
@@ -272,4 +300,22 @@ impl CpuRenderer {
 
         (u, v)
     }
+}
+
+fn offset_point(point: [f32; 3], normal: [f32; 3]) -> [f32; 3] {
+    const RAY_EPSILON: f32 = 0.001;
+    [
+        point[0] + normal[0] * RAY_EPSILON,
+        point[1] + normal[1] * RAY_EPSILON,
+        point[2] + normal[2] * RAY_EPSILON,
+    ]
+}
+
+fn blend_reflection(local: [f32; 3], reflected: Option<[u8; 3]>, reflectivity: f32) -> [u8; 3] {
+    let reflectivity = reflectivity.clamp(0.0, 1.0);
+    std::array::from_fn(|channel| {
+        let reflected = reflected.map_or(0.0, |color| color[channel] as f32 / 255.0);
+        let color = local[channel] * (1.0 - reflectivity) + reflected * reflectivity;
+        (color.clamp(0.0, 1.0) * 255.0) as u8
+    })
 }
