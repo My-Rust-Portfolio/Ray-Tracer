@@ -2,11 +2,14 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use crate::renderer::{RenderSettings, ViewMode, cpu::CpuView, gpu_viewport::GpuViewport};
+use crate::renderer::{
+    RenderSettings, ViewMode, cpu::CpuBackend, gpu_viewport::GpuViewport, world::RenderWorld,
+};
 use crate::ui::{settings_panel, viewport::Viewport};
 
 pub struct App {
-    cpu_view: CpuView,
+    world: RenderWorld,
+    cpu_backend: CpuBackend,
     viewport: Viewport,
     gpu_viewport: Option<GpuViewport>,
     settings: RenderSettings,
@@ -20,7 +23,8 @@ pub struct App {
 impl App {
     pub fn new(creation_context: &eframe::CreationContext<'_>) -> Self {
         Self {
-            cpu_view: CpuView::new(),
+            world: RenderWorld::new(),
+            cpu_backend: CpuBackend::new(),
             viewport: Viewport::default(),
             gpu_viewport: creation_context
                 .wgpu_render_state
@@ -50,6 +54,7 @@ impl eframe::App for App {
             self.fps_frames = 0;
         }
         let dt = frame_seconds.min(0.1);
+        self.world.update(dt);
 
         egui::Panel::left("settings")
             .resizable(false)
@@ -59,12 +64,13 @@ impl eframe::App for App {
             });
 
         egui::CentralPanel::default().show(root, |ui| match self.view_mode {
-            ViewMode::Cpu => self
-                .viewport
-                .show(ui, &mut self.cpu_view, self.settings, dt),
+            ViewMode::Cpu => {
+                self.viewport
+                    .show(ui, &mut self.world, &mut self.cpu_backend, self.settings)
+            }
             ViewMode::GpuPresentationPreview => {
                 if let Some(gpu_viewport) = &self.gpu_viewport {
-                    gpu_viewport.show(ui);
+                    gpu_viewport.show(ui, &mut self.world);
                 } else {
                     ui.label("wgpu is unavailable on this device.");
                 }

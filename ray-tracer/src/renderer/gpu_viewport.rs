@@ -3,6 +3,8 @@ use std::sync::Arc;
 use eframe::egui;
 use eframe::egui_wgpu::{self, wgpu};
 
+use super::world::RenderWorld;
+
 /// A direct-to-render-pass GPU view used as the foundation for the GPU tracer.
 /// It deliberately has no CPU pixel buffer or readback path.
 pub struct GpuViewport {
@@ -43,8 +45,9 @@ impl GpuViewport {
         }
     }
 
-    pub fn show(&self, ui: &mut egui::Ui) {
+    pub fn show(&self, ui: &mut egui::Ui, world: &mut RenderWorld) {
         let (rect, _) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
+        world.resize(rect.width().round() as u32, rect.height().round() as u32);
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(
             rect,
             GpuPreviewCallback {

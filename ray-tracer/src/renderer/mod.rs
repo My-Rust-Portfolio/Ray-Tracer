@@ -1,5 +1,6 @@
 pub mod cpu;
 pub mod gpu_viewport;
+pub mod world;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ViewMode {

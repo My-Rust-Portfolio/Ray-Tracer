@@ -1,7 +1,7 @@
 use eframe::egui;
 use winit::keyboard::KeyCode;
 
-use crate::renderer::{RenderSettings, cpu::CpuView};
+use crate::renderer::{RenderSettings, cpu::CpuBackend, world::RenderWorld};
 
 #[derive(Default)]
 pub struct Viewport {
@@ -12,14 +12,15 @@ impl Viewport {
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
-        cpu_view: &mut CpuView,
+        world: &mut RenderWorld,
+        cpu_backend: &mut CpuBackend,
         settings: RenderSettings,
-        dt: f32,
     ) {
         let available = ui.available_size();
         let width = available.x.max(1.0).round() as u32;
         let height = available.y.max(1.0).round() as u32;
-        let rgb = cpu_view.render_frame(width, height, settings, dt);
+        world.resize(width, height);
+        let rgb = cpu_backend.render_frame(world.camera(), world.scene(), width, height, settings);
         let image = egui::ColorImage::from_rgb([width as usize, height as usize], rgb);
         if let Some(texture) = &mut self.texture {
             texture.set(image, egui::TextureOptions::LINEAR);
@@ -37,7 +38,7 @@ impl Viewport {
         response.request_focus();
         if response.dragged() {
             let delta = ui.input(|input| input.pointer.delta());
-            cpu_view.handle_mouse_delta(delta.x, delta.y);
+            world.mouse_delta(delta.x, delta.y);
         }
         if response.has_focus() || response.hovered() {
             ui.input(|input| {
@@ -48,9 +49,9 @@ impl Viewport {
                     (egui::Key::D, KeyCode::KeyD),
                     (egui::Key::Space, KeyCode::Space),
                 ] {
-                    cpu_view.handle_key(code, input.key_down(key));
+                    world.set_key(code, input.key_down(key));
                 }
-                cpu_view.handle_key(KeyCode::ControlLeft, input.modifiers.ctrl);
+                world.set_key(KeyCode::ControlLeft, input.modifiers.ctrl);
             });
         }
     }

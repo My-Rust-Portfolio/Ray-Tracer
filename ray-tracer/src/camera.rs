@@ -35,6 +35,11 @@ impl Camera {
         self.origin = pos;
     }
 
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.width = width.max(1);
+        self.height = height.max(1);
+    }
+
     pub fn set_orientation(&mut self, yaw: f32, pitch: f32) {
         use std::f32::consts::PI;
 

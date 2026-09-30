@@ -1,54 +1,46 @@
 mod shading;
 
-pub use shading::CpuRenderer;
+pub use shading::CpuRenderer as CpuShader;
 
 use crate::camera::Camera;
-use crate::controller::CameraController;
 use crate::scene::Scene;
 use rayon::prelude::*;
-use winit::keyboard::KeyCode;
 
 use super::RenderSettings;
 
-pub struct CpuView {
+/// CPU backend that renders shared camera/scene state into an RGB frame.
+pub struct CpuBackend {
     width: u32,
     height: u32,
-    camera: Camera,
-    scene: Scene,
-    renderer: CpuRenderer,
-    controller: CameraController,
+    shader: CpuShader,
     frame: Vec<u8>,
 }
 
-impl CpuView {
+impl CpuBackend {
     pub fn new() -> Self {
         Self {
             width: 0,
             height: 0,
-            camera: Camera::new(1, 1),
-            scene: Scene::new(),
-            renderer: CpuRenderer::new(),
-            controller: CameraController::default(),
+            shader: CpuShader::new(),
             frame: Vec::new(),
         }
     }
 
     pub fn render_frame(
         &mut self,
+        camera: &Camera,
+        scene: &Scene,
         width: u32,
         height: u32,
         settings: RenderSettings,
-        dt: f32,
     ) -> &[u8] {
         let width = width.max(1);
         let height = height.max(1);
         if [width, height] != [self.width, self.height] {
             self.width = width;
             self.height = height;
-            self.camera = Camera::new(width, height);
             self.frame.resize(width as usize * height as usize * 3, 0);
         }
-        self.controller.update(&mut self.camera, dt);
 
         let samples_per_axis = settings.samples_per_axis.clamp(1, 4);
         let sample_count = samples_per_axis * samples_per_axis;
@@ -64,8 +56,8 @@ impl CpuView {
                                 (sample_x as f32 + 0.5) / samples_per_axis as f32,
                                 (sample_y as f32 + 0.5) / samples_per_axis as f32,
                             ];
-                            let ray = self.camera.ray_for_sample(x as u32, y as u32, offset);
-                            let sample = self.renderer.shade_ray(&self.scene, &ray, 0, settings);
+                            let ray = camera.ray_for_sample(x as u32, y as u32, offset);
+                            let sample = self.shader.shade_ray(scene, &ray, 0, settings);
                             for (channel, value) in colour.iter_mut().zip(sample) {
                                 *channel += value as u32;
                             }
@@ -78,13 +70,5 @@ impl CpuView {
             });
 
         &self.frame
-    }
-
-    pub fn handle_key(&mut self, key: KeyCode, pressed: bool) {
-        self.controller.set_key(key, pressed);
-    }
-
-    pub fn handle_mouse_delta(&mut self, dx: f32, dy: f32) {
-        self.controller.mouse_delta(dx, dy);
     }
 }
