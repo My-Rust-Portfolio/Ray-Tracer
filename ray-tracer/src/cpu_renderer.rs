@@ -1,6 +1,5 @@
 use crate::math::Ray;
 use crate::scene::{Hit, HitKind, Scene};
-use std::path::Path;
 
 pub struct CpuRenderer {
     pub light_dir: [f32; 3],
@@ -14,16 +13,14 @@ pub struct CpuRenderer {
 }
 impl CpuRenderer {
     pub fn new() -> Self {
-        let sky_path = Path::new("assets/sky.png");
-        let sky_img = image::open(sky_path)
-            .expect("Failed to load sky image")
+        let sky_img = image::load_from_memory(include_bytes!("../assets/sky.png"))
+            .expect("Failed to decode bundled sky image")
             .to_rgb8();
 
         let (sky_width, sky_height) = sky_img.dimensions();
 
-        let ground_path = Path::new("assets/ground.jpg");
-        let ground_img = image::open(ground_path)
-            .expect("Failed to load brick image")
+        let ground_img = image::load_from_memory(include_bytes!("../assets/ground.jpg"))
+            .expect("Failed to decode bundled ground image")
             .to_rgb8();
         let (ground_width, ground_height) = ground_img.dimensions();
 
@@ -50,7 +47,7 @@ impl CpuRenderer {
         if let Some(hit) = scene.closest_hit(ray) {
             match hit.kind {
                 HitKind::Sphere(_) => self.shade_sphere(scene, &hit, ray, depth),
-                HitKind::Plane(_) => self.shade_plane(&hit, ray, depth),
+                HitKind::Plane(_) => self.shade_plane(&hit),
             }
         } else {
             self.sample_sky_dir(ray.direction)
@@ -107,7 +104,7 @@ impl CpuRenderer {
         ]
     }
 
-    fn shade_plane(&self, hit: &Hit, ray: &Ray, depth: u32) -> [u8; 3] {
+    fn shade_plane(&self, hit: &Hit) -> [u8; 3] {
         let normal = hit.normal;
 
         // Get brick colour at this hit

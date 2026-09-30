@@ -121,8 +121,7 @@ impl ApplicationHandler for App {
         use winit::event::DeviceEvent;
         if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
             if let Some(cpu_view) = &mut self.cpu_view {
-                let sensitivity = 0.003;
-                cpu_view.handle_mouse_delta(dx as f32, dy as f32, sensitivity);
+                cpu_view.handle_mouse_delta(dx as f32, dy as f32);
             }
         }
     }
