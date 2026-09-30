@@ -2,7 +2,20 @@ use eframe::egui;
 
 use crate::renderer::{RenderSettings, ViewMode};
 
-pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, mode: &mut ViewMode, fps: f32) {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SceneAction {
+    None,
+    SpawnSphere,
+    DeleteSpawnedSphere,
+}
+
+pub fn show(
+    ui: &mut egui::Ui,
+    settings: &mut RenderSettings,
+    mode: &mut ViewMode,
+    fps: f32,
+    spawned_sphere_count: usize,
+) -> SceneAction {
     ui.heading("Ray tracer");
     ui.separator();
     ui.label("Rendering path");
@@ -16,8 +29,7 @@ pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, mode: &mut ViewMod
             ui.selectable_value(mode, ViewMode::Gpu, "GPU ray tracer · basic");
         });
     if *mode == ViewMode::Gpu {
-        ui.small("GPU pass: spheres, ground, direct lighting, shadows, reflections, and sky.");
-        ui.small("Textures are CPU-only for now.");
+        ui.small("GPU pass: spheres, ground, textures, lighting, shadows, reflections, and sky.");
     }
 
     ui.add_space(16.0);
@@ -47,10 +59,23 @@ pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, mode: &mut ViewMod
         "{} rays per pixel",
         settings.samples_per_axis.pow(2)
     ));
+    ui.add_space(16.0);
+    ui.label("Scene");
+    let mut scene_action = SceneAction::None;
+    if ui.button("Spawn random sphere nearby").clicked() {
+        scene_action = SceneAction::SpawnSphere;
+    }
+    ui.add_enabled_ui(spawned_sphere_count > 0, |ui| {
+        if ui.button("Delete last spawned sphere").clicked() {
+            scene_action = SceneAction::DeleteSpawnedSphere;
+        }
+    });
+    ui.small(format!("{spawned_sphere_count} spawned"));
     ui.add_space(12.0);
     ui.checkbox(&mut settings.shadows_enabled, "Shadows");
     ui.add_space(16.0);
     ui.separator();
     ui.label("Click and drag in the view to look around.");
     ui.label("WASD to move, Space/Ctrl to move vertically.");
+    scene_action
 }

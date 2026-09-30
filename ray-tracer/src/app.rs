@@ -5,7 +5,7 @@ use eframe::egui;
 use crate::renderer::{
     RenderSettings, ViewMode, cpu::CpuBackend, gpu_viewport::GpuViewport, world::RenderWorld,
 };
-use crate::ui::{settings_panel, viewport::Viewport};
+use crate::ui::{settings_panel, settings_panel::SceneAction, viewport::Viewport};
 
 pub struct App {
     world: RenderWorld,
@@ -60,7 +60,20 @@ impl eframe::App for App {
             .resizable(false)
             .default_size(230.0)
             .show(root, |ui| {
-                settings_panel::show(ui, &mut self.settings, &mut self.view_mode, self.fps)
+                let scene_action = settings_panel::show(
+                    ui,
+                    &mut self.settings,
+                    &mut self.view_mode,
+                    self.fps,
+                    self.world.spawned_sphere_count(),
+                );
+                match scene_action {
+                    SceneAction::None => {}
+                    SceneAction::SpawnSphere => self.world.spawn_random_sphere_nearby(),
+                    SceneAction::DeleteSpawnedSphere => {
+                        self.world.delete_last_spawned_sphere();
+                    }
+                }
             });
 
         egui::CentralPanel::default().show(root, |ui| match self.view_mode {
