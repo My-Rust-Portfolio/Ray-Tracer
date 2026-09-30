@@ -166,7 +166,7 @@ impl GpuViewport {
             scene: [
                 scene.spheres.len().min(MAX_SPHERES) as u32,
                 u32::from(settings.shadows_enabled),
-                0,
+                settings.samples_per_axis.clamp(1, 4) as u32,
                 0,
             ],
             light_dir: extend([0.4662524, 0.8392543, 0.2797515], 0.0),

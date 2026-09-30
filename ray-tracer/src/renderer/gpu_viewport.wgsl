@@ -173,16 +173,9 @@ fn sample_sky(ray_direction: vec3<f32>) -> vec3<f32> {
     return mix(vec3<f32>(0.015, 0.02, 0.04), vec3<f32>(0.35, 0.55, 0.85), sky_t);
 }
 
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    let local_pixel = input.position.xy - params.viewport.xy;
-    let uv = local_pixel / params.viewport.zw;
-    let screen = vec2<f32>(2.0 * uv.x - 1.0, 1.0 - 2.0 * uv.y);
+fn trace_path(initial_direction: vec3<f32>) -> vec3<f32> {
     var ray_origin = params.camera_origin.xyz;
-    var ray_direction = normalize(params.camera_forward.xyz
-        + params.camera_right.xyz * screen.x
-        + params.camera_up.xyz * screen.y);
-
+    var ray_direction = initial_direction;
     var radiance = vec3<f32>(0.0);
     var throughput = vec3<f32>(1.0);
     for (var bounce = 0u; bounce < 3u; bounce += 1u) {
@@ -217,5 +210,26 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     if any(throughput > vec3<f32>(0.0)) {
         radiance += throughput * sample_sky(ray_direction);
     }
-    return vec4<f32>(radiance, 1.0);
+    return radiance;
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    let local_pixel = input.position.xy - params.viewport.xy;
+    let samples_per_axis = clamp(params.scene.z, 1u, 4u);
+    let sample_width = 1.0 / f32(samples_per_axis);
+    var radiance = vec3<f32>(0.0);
+    for (var y = 0u; y < samples_per_axis; y += 1u) {
+        for (var x = 0u; x < samples_per_axis; x += 1u) {
+            let offset = (vec2<f32>(f32(x), f32(y)) + vec2<f32>(0.5)) * sample_width;
+            let uv = (local_pixel + offset) / params.viewport.zw;
+            let screen = vec2<f32>(2.0 * uv.x - 1.0, 1.0 - 2.0 * uv.y);
+            let ray_direction = normalize(params.camera_forward.xyz
+                + params.camera_right.xyz * screen.x
+                + params.camera_up.xyz * screen.y);
+            radiance += trace_path(ray_direction);
+        }
+    }
+    let sample_count = f32(samples_per_axis * samples_per_axis);
+    return vec4<f32>(radiance / sample_count, 1.0);
 }

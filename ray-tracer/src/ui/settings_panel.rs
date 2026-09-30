@@ -17,7 +17,7 @@ pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, mode: &mut ViewMod
         });
     if *mode == ViewMode::Gpu {
         ui.small("GPU pass: spheres, ground, direct lighting, shadows, reflections, and sky.");
-        ui.small("Textures and SSAA are CPU-only for now.");
+        ui.small("Textures are CPU-only for now.");
     }
 
     ui.add_space(16.0);
@@ -28,27 +28,25 @@ pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, mode: &mut ViewMod
         ui.label("Measuring FPS…");
     }
 
-    ui.add_enabled_ui(*mode == ViewMode::Cpu, |ui| {
-        ui.add_space(16.0);
-        ui.label("Anti-aliasing");
-        egui::ComboBox::from_id_salt("ssaa")
-            .selected_text(match settings.samples_per_axis {
-                1 => "Off · 1 sample",
-                2 => "2×2 · 4 samples",
-                3 => "3×3 · 9 samples",
-                _ => "4×4 · 16 samples",
-            })
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut settings.samples_per_axis, 1, "Off · 1 sample");
-                ui.selectable_value(&mut settings.samples_per_axis, 2, "2×2 · 4 samples");
-                ui.selectable_value(&mut settings.samples_per_axis, 3, "3×3 · 9 samples");
-                ui.selectable_value(&mut settings.samples_per_axis, 4, "4×4 · 16 samples");
-            });
-        ui.label(format!(
-            "{} rays per pixel",
-            settings.samples_per_axis.pow(2)
-        ));
-    });
+    ui.add_space(16.0);
+    ui.label("Anti-aliasing");
+    egui::ComboBox::from_id_salt("ssaa")
+        .selected_text(match settings.samples_per_axis {
+            1 => "Off · 1 sample",
+            2 => "2×2 · 4 samples",
+            3 => "3×3 · 9 samples",
+            _ => "4×4 · 16 samples",
+        })
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut settings.samples_per_axis, 1, "Off · 1 sample");
+            ui.selectable_value(&mut settings.samples_per_axis, 2, "2×2 · 4 samples");
+            ui.selectable_value(&mut settings.samples_per_axis, 3, "3×3 · 9 samples");
+            ui.selectable_value(&mut settings.samples_per_axis, 4, "4×4 · 16 samples");
+        });
+    ui.label(format!(
+        "{} rays per pixel",
+        settings.samples_per_axis.pow(2)
+    ));
     ui.add_space(12.0);
     ui.checkbox(&mut settings.shadows_enabled, "Shadows");
     ui.add_space(16.0);
