@@ -1,9 +1,14 @@
+mod shading;
+
+pub use shading::CpuRenderer;
+
 use crate::camera::Camera;
 use crate::controller::CameraController;
-use crate::cpu_renderer::CpuRenderer;
 use crate::scene::Scene;
 use rayon::prelude::*;
 use winit::keyboard::KeyCode;
+
+use super::RenderSettings;
 
 pub struct CpuView {
     width: u32,
@@ -32,7 +37,7 @@ impl CpuView {
         &mut self,
         width: u32,
         height: u32,
-        samples_per_axis: u32,
+        settings: RenderSettings,
         dt: f32,
     ) -> &[u8] {
         let width = width.max(1);
@@ -45,7 +50,7 @@ impl CpuView {
         }
         self.controller.update(&mut self.camera, dt);
 
-        let samples_per_axis = samples_per_axis.clamp(1, 4);
+        let samples_per_axis = settings.samples_per_axis.clamp(1, 4);
         let sample_count = samples_per_axis * samples_per_axis;
         self.frame
             .par_chunks_mut(width as usize * 3)
@@ -60,7 +65,7 @@ impl CpuView {
                                 (sample_y as f32 + 0.5) / samples_per_axis as f32,
                             ];
                             let ray = self.camera.ray_for_sample(x as u32, y as u32, offset);
-                            let sample = self.renderer.shade_ray(&self.scene, &ray, 0);
+                            let sample = self.renderer.shade_ray(&self.scene, &ray, 0, settings);
                             for (channel, value) in colour.iter_mut().zip(sample) {
                                 *channel += value as u32;
                             }
@@ -81,9 +86,5 @@ impl CpuView {
 
     pub fn handle_mouse_delta(&mut self, dx: f32, dy: f32) {
         self.controller.mouse_delta(dx, dy);
-    }
-
-    pub fn set_shadows_enabled(&mut self, enabled: bool) {
-        self.renderer.set_shadows_enabled(enabled);
     }
 }

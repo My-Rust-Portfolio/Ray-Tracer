@@ -1,11 +1,11 @@
 mod app;
 mod camera;
 mod controller;
-mod cpu_renderer;
-mod cpu_view;
 mod math;
 mod objects;
+mod renderer;
 mod scene;
+mod ui;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {

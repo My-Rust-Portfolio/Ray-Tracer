@@ -1,9 +1,9 @@
 use crate::math::Ray;
+use crate::renderer::RenderSettings;
 use crate::scene::{Hit, HitKind, Scene};
 
 pub struct CpuRenderer {
     pub light_dir: [f32; 3],
-    shadows_enabled: bool,
     sky_image: image::RgbImage,
     sky_width: u32,
     sky_height: u32,
@@ -14,13 +14,13 @@ pub struct CpuRenderer {
 }
 impl CpuRenderer {
     pub fn new() -> Self {
-        let sky_img = image::load_from_memory(include_bytes!("../assets/sky.png"))
+        let sky_img = image::load_from_memory(include_bytes!("../../../assets/sky.png"))
             .expect("Failed to decode bundled sky image")
             .to_rgb8();
 
         let (sky_width, sky_height) = sky_img.dimensions();
 
-        let ground_img = image::load_from_memory(include_bytes!("../assets/ground.jpg"))
+        let ground_img = image::load_from_memory(include_bytes!("../../../assets/ground.jpg"))
             .expect("Failed to decode bundled ground image")
             .to_rgb8();
         let (ground_width, ground_height) = ground_img.dimensions();
@@ -30,7 +30,6 @@ impl CpuRenderer {
 
         Self {
             light_dir: [dir[0] / len, dir[1] / len, dir[2] / len],
-            shadows_enabled: true,
             sky_image: sky_img,
             sky_width,
             sky_height,
@@ -41,30 +40,39 @@ impl CpuRenderer {
         }
     }
 
-    pub fn set_shadows_enabled(&mut self, enabled: bool) {
-        self.shadows_enabled = enabled;
-    }
-
-    pub fn shade_ray(&self, scene: &Scene, ray: &Ray, depth: u32) -> [u8; 3] {
+    pub fn shade_ray(
+        &self,
+        scene: &Scene,
+        ray: &Ray,
+        depth: u32,
+        settings: RenderSettings,
+    ) -> [u8; 3] {
         if depth >= 3 {
             return self.sample_sky_dir(ray.direction);
         }
 
         if let Some(hit) = scene.closest_hit(ray) {
             match hit.kind {
-                HitKind::Sphere => self.shade_sphere(scene, &hit, ray, depth),
-                HitKind::Plane => self.shade_plane(scene, &hit),
+                HitKind::Sphere => self.shade_sphere(scene, &hit, ray, depth, settings),
+                HitKind::Plane => self.shade_plane(scene, &hit, settings),
             }
         } else {
             self.sample_sky_dir(ray.direction)
         }
     }
 
-    fn shade_sphere(&self, scene: &Scene, hit: &Hit, ray: &Ray, depth: u32) -> [u8; 3] {
+    fn shade_sphere(
+        &self,
+        scene: &Scene,
+        hit: &Hit,
+        ray: &Ray,
+        depth: u32,
+        settings: RenderSettings,
+    ) -> [u8; 3] {
         let n = hit.normal;
         let v = [-ray.direction[0], -ray.direction[1], -ray.direction[2]];
 
-        let in_shadow = self.shadows_enabled && self.is_in_shadow(scene, hit);
+        let in_shadow = settings.shadows_enabled && self.is_in_shadow(scene, hit);
 
         let ndotl =
             (n[0] * self.light_dir[0] + n[1] * self.light_dir[1] + n[2] * self.light_dir[2])
@@ -102,7 +110,7 @@ impl CpuRenderer {
 
         // Unlike sample_sky_dir, this tests the plane (and other scene objects)
         // before falling back to the sky.
-        let reflected = self.shade_ray(scene, &reflected_ray, depth + 1);
+        let reflected = self.shade_ray(scene, &reflected_ray, depth + 1, settings);
         let reflect_weight = 0.7;
 
         let channel = |value: u8| -> u8 {
@@ -117,7 +125,7 @@ impl CpuRenderer {
         ]
     }
 
-    fn shade_plane(&self, scene: &Scene, hit: &Hit) -> [u8; 3] {
+    fn shade_plane(&self, scene: &Scene, hit: &Hit, settings: RenderSettings) -> [u8; 3] {
         let normal = hit.normal;
 
         // Get brick colour at this hit
@@ -139,7 +147,7 @@ impl CpuRenderer {
             nl = 0.0;
         }
 
-        let in_shadow = self.shadows_enabled && self.is_in_shadow(scene, hit);
+        let in_shadow = settings.shadows_enabled && self.is_in_shadow(scene, hit);
         let direct = if in_shadow { 0.0 } else { 0.9 * nl };
         // Keep the ground texture visible inside hard shadows without letting
         // direct light leak through the occluder.
