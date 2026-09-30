@@ -127,15 +127,9 @@ impl CpuRenderer {
         let normal = hit.normal;
         let material = hit.material;
 
-        // Get brick colour at this hit
+        // Decode the color texture before filtering and applying lighting.
         let (u, v) = self.plane_uv_from_hit(hit);
-        let brick_col = self.sample_ground(u, v);
-
-        let texture_colour = [
-            brick_col[0] as f32 / 255.0,
-            brick_col[1] as f32 / 255.0,
-            brick_col[2] as f32 / 255.0,
-        ];
+        let texture_colour = self.sample_ground_linear(u, v);
 
         let mut nl = normal[0] * self.light_dir[0]
             + normal[1] * self.light_dir[1]
@@ -244,17 +238,15 @@ impl CpuRenderer {
         let c10 = self.sky_image.get_pixel(x1, y0);
         let c11 = self.sky_image.get_pixel(x1, y1);
 
-        let r = self.bilerp(c00[0], c10[0], c01[0], c11[0], fx, fy) as u8;
-        let g = self.bilerp(c00[1], c10[1], c01[1], c11[1], fx, fy) as u8;
-        let b = self.bilerp(c00[2], c10[2], c01[2], c11[2], fx, fy) as u8;
-
-        [r, g, b]
-    }
-
-    fn bilerp(&self, c00: u8, c10: u8, c01: u8, c11: u8, fx: f32, fy: f32) -> f32 {
-        let c0 = c00 as f32 * (1.0 - fx) + c10 as f32 * fx;
-        let c1 = c01 as f32 * (1.0 - fx) + c11 as f32 * fx;
-        c0 * (1.0 - fy) + c1 * fy
+        std::array::from_fn(|channel| {
+            let c00 = srgb_to_linear(c00[channel] as f32 / 255.0);
+            let c01 = srgb_to_linear(c01[channel] as f32 / 255.0);
+            let c10 = srgb_to_linear(c10[channel] as f32 / 255.0);
+            let c11 = srgb_to_linear(c11[channel] as f32 / 255.0);
+            let c0 = c00 * (1.0 - fx) + c10 * fx;
+            let c1 = c01 * (1.0 - fx) + c11 * fx;
+            (linear_to_srgb(c0 * (1.0 - fy) + c1 * fy) * 255.0 + 0.5) as u8
+        })
     }
 
     fn sample_sky_dir(&self, dir: [f32; 3]) -> [u8; 3] {
@@ -262,7 +254,7 @@ impl CpuRenderer {
         self.sample_sky(u, v)
     }
 
-    fn sample_ground(&self, u: f32, v: f32) -> [u8; 3] {
+    fn sample_ground_linear(&self, u: f32, v: f32) -> [f32; 3] {
         // Wrap UVs to make the texture tile
         let u = (u - u.floor()).clamp(0.0, 1.0);
         let v = (v - v.floor()).clamp(0.0, 1.0);
@@ -283,11 +275,15 @@ impl CpuRenderer {
         let c10 = self.ground_image.get_pixel(x1, y0);
         let c11 = self.ground_image.get_pixel(x1, y1);
 
-        let r = self.bilerp(c00[0], c10[0], c01[0], c11[0], fx, fy) as u8;
-        let g = self.bilerp(c00[1], c10[1], c01[1], c11[1], fx, fy) as u8;
-        let b = self.bilerp(c00[2], c10[2], c01[2], c11[2], fx, fy) as u8;
-
-        [r, g, b]
+        std::array::from_fn(|channel| {
+            let c00 = srgb_to_linear(c00[channel] as f32 / 255.0);
+            let c01 = srgb_to_linear(c01[channel] as f32 / 255.0);
+            let c10 = srgb_to_linear(c10[channel] as f32 / 255.0);
+            let c11 = srgb_to_linear(c11[channel] as f32 / 255.0);
+            let c0 = c00 * (1.0 - fx) + c10 * fx;
+            let c1 = c01 * (1.0 - fx) + c11 * fx;
+            c0 * (1.0 - fy) + c1 * fy
+        })
     }
 
     fn plane_uv_from_hit(&self, hit: &Hit) -> (f32, f32) {
@@ -314,8 +310,25 @@ fn offset_point(point: [f32; 3], normal: [f32; 3]) -> [f32; 3] {
 fn blend_reflection(local: [f32; 3], reflected: Option<[u8; 3]>, reflectivity: f32) -> [u8; 3] {
     let reflectivity = reflectivity.clamp(0.0, 1.0);
     std::array::from_fn(|channel| {
-        let reflected = reflected.map_or(0.0, |color| color[channel] as f32 / 255.0);
+        let reflected =
+            reflected.map_or(0.0, |color| srgb_to_linear(color[channel] as f32 / 255.0));
         let color = local[channel] * (1.0 - reflectivity) + reflected * reflectivity;
-        (color.clamp(0.0, 1.0) * 255.0) as u8
+        (linear_to_srgb(color.clamp(0.0, 1.0)) * 255.0 + 0.5) as u8
     })
+}
+
+fn srgb_to_linear(value: f32) -> f32 {
+    if value <= 0.04045 {
+        value / 12.92
+    } else {
+        ((value + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn linear_to_srgb(value: f32) -> f32 {
+    if value <= 0.0031308 {
+        value * 12.92
+    } else {
+        1.055 * value.powf(1.0 / 2.4) - 0.055
+    }
 }

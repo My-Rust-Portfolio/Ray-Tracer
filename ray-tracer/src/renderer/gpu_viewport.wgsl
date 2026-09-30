@@ -182,6 +182,12 @@ fn sample_sky(ray_direction: vec3<f32>) -> vec3<f32> {
     return textureSampleLevel(sky_texture, image_sampler, uv, 0.0).rgb;
 }
 
+fn linear_to_srgb(value: vec3<f32>) -> vec3<f32> {
+    let low = value * 12.92;
+    let high = 1.055 * pow(max(value, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.4)) - 0.055;
+    return select(high, low, value <= vec3<f32>(0.0031308));
+}
+
 fn trace_path(initial_direction: vec3<f32>) -> vec3<f32> {
     var ray_origin = params.camera_origin.xyz;
     var ray_direction = initial_direction;
@@ -241,5 +247,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
     let sample_count = f32(samples_per_axis * samples_per_axis);
-    return vec4<f32>(radiance / sample_count, 1.0);
+    // egui prefers a gamma-encoded, non-sRGB framebuffer. Texture samples and
+    // lighting are linear, so encode once at the fragment output boundary.
+    return vec4<f32>(linear_to_srgb(radiance / sample_count), 1.0);
 }
