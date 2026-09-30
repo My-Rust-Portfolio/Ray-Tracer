@@ -69,6 +69,12 @@ impl Scene {
 
         closest_hit
     }
+
+    /// Returns whether any scene object blocks a ray before `max_distance`.
+    pub fn occluded(&self, ray: &Ray, max_distance: f32) -> bool {
+        self.closest_hit(ray)
+            .is_some_and(|hit| hit.t < max_distance)
+    }
 }
 
 fn point_on_ray(ray: &Ray, t: f32) -> [f32; 3] {

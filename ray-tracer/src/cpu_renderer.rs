@@ -47,7 +47,7 @@ impl CpuRenderer {
         if let Some(hit) = scene.closest_hit(ray) {
             match hit.kind {
                 HitKind::Sphere => self.shade_sphere(scene, &hit, ray, depth),
-                HitKind::Plane => self.shade_plane(&hit),
+                HitKind::Plane => self.shade_plane(scene, &hit),
             }
         } else {
             self.sample_sky_dir(ray.direction)
@@ -57,6 +57,8 @@ impl CpuRenderer {
     fn shade_sphere(&self, scene: &Scene, hit: &Hit, ray: &Ray, depth: u32) -> [u8; 3] {
         let n = hit.normal;
         let v = [-ray.direction[0], -ray.direction[1], -ray.direction[2]];
+
+        let in_shadow = self.is_in_shadow(scene, hit);
 
         let ndotl =
             (n[0] * self.light_dir[0] + n[1] * self.light_dir[1] + n[2] * self.light_dir[2])
@@ -68,9 +70,14 @@ impl CpuRenderer {
             2.0 * ndotl * n[2] - self.light_dir[2],
         ];
         let rdotv = (r[0] * v[0] + r[1] * v[1] + r[2] * v[2]).max(0.0);
-        let spec = rdotv.powf(64.0);
+        let spec = if in_shadow { 0.0 } else { rdotv.powf(64.0) };
 
-        let local = 0.05 * ndotl + 0.6 * spec;
+        let direct = if in_shadow {
+            0.0
+        } else {
+            0.05 * ndotl + 0.6 * spec
+        };
+        let local = 0.02 + direct;
 
         // Reflect the incoming ray direction, not the direction toward the camera.
         let reflect_dir = self.reflect(ray.direction, n);
@@ -104,7 +111,7 @@ impl CpuRenderer {
         ]
     }
 
-    fn shade_plane(&self, hit: &Hit) -> [u8; 3] {
+    fn shade_plane(&self, scene: &Scene, hit: &Hit) -> [u8; 3] {
         let normal = hit.normal;
 
         // Get brick colour at this hit
@@ -126,13 +133,32 @@ impl CpuRenderer {
             nl = 0.0;
         }
 
-        let intensity = ambient + 0.9 * nl;
+        let in_shadow = self.is_in_shadow(scene, hit);
+        let direct = if in_shadow { 0.0 } else { 0.9 * nl };
+        // Keep the ground texture visible inside hard shadows without letting
+        // direct light leak through the occluder.
+        let shadow_ambient = if in_shadow { 0.24 } else { ambient };
+        let intensity = shadow_ambient + direct;
 
         [
             (base_colour[0] * intensity * 255.0) as u8,
             (base_colour[1] * intensity * 255.0) as u8,
             (base_colour[2] * intensity * 255.0) as u8,
         ]
+    }
+
+    fn is_in_shadow(&self, scene: &Scene, hit: &Hit) -> bool {
+        const SHADOW_EPSILON: f32 = 0.001;
+        let shadow_ray = Ray {
+            origin: [
+                hit.point[0] + hit.normal[0] * SHADOW_EPSILON,
+                hit.point[1] + hit.normal[1] * SHADOW_EPSILON,
+                hit.point[2] + hit.normal[2] * SHADOW_EPSILON,
+            ],
+            direction: self.light_dir,
+        };
+
+        scene.occluded(&shadow_ray, f32::INFINITY)
     }
 
     fn reflect(&self, dir: [f32; 3], normal: [f32; 3]) -> [f32; 3] {
