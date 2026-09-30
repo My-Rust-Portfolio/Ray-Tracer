@@ -16,8 +16,8 @@ pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, mode: &mut ViewMod
             ui.selectable_value(mode, ViewMode::Gpu, "GPU ray tracer · basic");
         });
     if *mode == ViewMode::Gpu {
-        ui.small("Basic GPU pass: spheres, ground, direct lighting, and sky.");
-        ui.small("Textures, shadows, reflections, and SSAA are CPU-only for now.");
+        ui.small("GPU pass: spheres, ground, direct lighting, hard shadows, and sky.");
+        ui.small("Textures, reflections, and SSAA are CPU-only for now.");
     }
 
     ui.add_space(16.0);
@@ -48,9 +48,9 @@ pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, mode: &mut ViewMod
             "{} rays per pixel",
             settings.samples_per_axis.pow(2)
         ));
-        ui.add_space(12.0);
-        ui.checkbox(&mut settings.shadows_enabled, "Shadows");
     });
+    ui.add_space(12.0);
+    ui.checkbox(&mut settings.shadows_enabled, "Shadows");
     ui.add_space(16.0);
     ui.separator();
     ui.label("Click and drag in the view to look around.");

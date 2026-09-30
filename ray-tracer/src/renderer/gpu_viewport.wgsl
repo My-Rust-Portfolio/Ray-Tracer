@@ -10,12 +10,14 @@ struct Params {
     plane_normal: vec4<f32>,
     plane_base_ambient: vec4<f32>,
     plane_properties: vec4<f32>,
+    plane_shadow_ambient: vec4<f32>,
 };
 
 struct GpuSphere {
     center_radius: vec4<f32>,
     base_ambient: vec4<f32>,
     properties: vec4<f32>,
+    shadow_ambient: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -37,14 +39,55 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     return output;
 }
 
-fn shade_surface(base: vec3<f32>, ambient: f32, diffuse: f32, specular: f32,
-                 shininess: f32, normal: vec3<f32>,
+fn is_occluded(point: vec3<f32>, normal: vec3<f32>) -> bool {
+    let shadow_origin = point + normal * 0.001;
+    let direction = params.light_dir.xyz;
+    let sphere_count = min(params.scene.x, arrayLength(&spheres));
+    for (var i = 0u; i < sphere_count; i += 1u) {
+        let sphere = spheres[i];
+        let offset = shadow_origin - sphere.center_radius.xyz;
+        let half_b = dot(offset, direction);
+        let c = dot(offset, offset) - sphere.center_radius.w * sphere.center_radius.w;
+        let discriminant = half_b * half_b - c;
+        if discriminant >= 0.0 {
+            let root = sqrt(discriminant);
+            var t = -half_b - root;
+            if t <= 0.001 {
+                t = -half_b + root;
+            }
+            if t > 0.001 {
+                return true;
+            }
+        }
+    }
+
+    let plane_denom = dot(direction, params.plane_normal.xyz);
+    if abs(plane_denom) > 1.0e-6 {
+        let plane_t = dot(
+            params.plane_point.xyz - shadow_origin,
+            params.plane_normal.xyz,
+        ) / plane_denom;
+        if plane_t > 0.001 {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn shade_surface(base: vec3<f32>, ambient: f32, shadow_ambient: f32,
+                 diffuse: f32, specular: f32, shininess: f32,
+                 point: vec3<f32>, normal: vec3<f32>,
                  ray_direction: vec3<f32>) -> vec3<f32> {
     let n_dot_l = max(dot(normal, params.light_dir.xyz), 0.0);
+    let shadowed = params.scene.y != 0u && n_dot_l > 0.0 && is_occluded(point, normal);
+    let direct_visibility = select(1.0, 0.0, shadowed);
+    let ambient_light = select(ambient, shadow_ambient, shadowed);
     let light_reflection = reflect(-params.light_dir.xyz, normal);
     let view_direction = -ray_direction;
-    let spec = pow(max(dot(light_reflection, view_direction), 0.0), shininess) * specular;
-    return clamp(base * (ambient + diffuse * n_dot_l) + vec3<f32>(spec), vec3<f32>(0.0), vec3<f32>(1.0));
+    let spec = pow(max(dot(light_reflection, view_direction), 0.0), shininess)
+        * specular * direct_visibility;
+    return clamp(base * (ambient_light + diffuse * n_dot_l * direct_visibility)
+        + vec3<f32>(spec), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 @fragment
@@ -79,9 +122,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
                 color = shade_surface(
                     sphere.base_ambient.xyz,
                     sphere.base_ambient.w,
+                    sphere.shadow_ambient.x,
                     sphere.properties.x,
                     sphere.properties.y,
                     sphere.properties.z,
+                    point,
                     normal,
                     ray_direction,
                 );
@@ -97,9 +142,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             color = shade_surface(
                 params.plane_base_ambient.xyz,
                 params.plane_base_ambient.w,
+                params.plane_shadow_ambient.x,
                 params.plane_properties.x,
                 params.plane_properties.y,
                 params.plane_properties.z,
+                point,
                 params.plane_normal.xyz,
                 ray_direction,
             );

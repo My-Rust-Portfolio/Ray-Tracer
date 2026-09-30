@@ -70,7 +70,7 @@ impl eframe::App for App {
             }
             ViewMode::Gpu => {
                 if let Some(gpu_viewport) = &self.gpu_viewport {
-                    gpu_viewport.show(ui, &mut self.world);
+                    gpu_viewport.show(ui, &mut self.world, self.settings);
                 } else {
                     ui.label("wgpu is unavailable on this device.");
                 }

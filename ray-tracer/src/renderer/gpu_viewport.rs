@@ -23,6 +23,7 @@ struct GpuParams {
     plane_normal: [f32; 4],
     plane_base_ambient: [f32; 4],
     plane_properties: [f32; 4],
+    plane_shadow_ambient: [f32; 4],
 }
 
 #[repr(C)]
@@ -31,6 +32,7 @@ struct GpuSphere {
     center_radius: [f32; 4],
     base_ambient: [f32; 4],
     properties: [f32; 4],
+    shadow_ambient: [f32; 4],
 }
 
 /// GPU ray tracer that writes directly into egui's wgpu render pass.
@@ -115,7 +117,12 @@ impl GpuViewport {
         }
     }
 
-    pub fn show(&self, ui: &mut egui::Ui, world: &mut RenderWorld) {
+    pub fn show(
+        &self,
+        ui: &mut egui::Ui,
+        world: &mut RenderWorld,
+        settings: super::RenderSettings,
+    ) {
         let (rect, response) =
             ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
         let pixels_per_point = ui.ctx().pixels_per_point();
@@ -156,7 +163,12 @@ impl GpuViewport {
                 rect.width() * pixels_per_point,
                 rect.height() * pixels_per_point,
             ],
-            scene: [scene.spheres.len().min(MAX_SPHERES) as u32, 0, 0, 0],
+            scene: [
+                scene.spheres.len().min(MAX_SPHERES) as u32,
+                u32::from(settings.shadows_enabled),
+                0,
+                0,
+            ],
             light_dir: extend([0.4662524, 0.8392543, 0.2797515], 0.0),
             plane_point: extend(scene.plane.point, 0.0),
             plane_normal: extend(scene.plane.normal, 0.0),
@@ -172,6 +184,7 @@ impl GpuViewport {
                 plane_material.shininess,
                 plane_material.reflectivity,
             ],
+            plane_shadow_ambient: [plane_material.shadow_ambient, 0.0, 0.0, 0.0],
         };
         let spheres = scene
             .spheres
@@ -193,6 +206,7 @@ impl GpuViewport {
                         material.shininess,
                         material.reflectivity,
                     ],
+                    shadow_ambient: [material.shadow_ambient, 0.0, 0.0, 0.0],
                 }
             })
             .collect::<Vec<_>>();
