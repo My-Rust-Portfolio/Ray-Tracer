@@ -7,8 +7,6 @@ use eframe::egui_wgpu::{self, wgpu};
 
 use super::world::RenderWorld;
 
-const MAX_SPHERES: usize = 256;
-
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct GpuParams {
@@ -38,17 +36,23 @@ struct GpuSphere {
 /// GPU ray tracer that writes directly into egui's wgpu render pass.
 /// Rendered pixels never leave GPU memory.
 pub struct GpuViewport {
+    device: wgpu::Device,
     pipeline: Arc<wgpu::RenderPipeline>,
     bind_group: Arc<wgpu::BindGroup>,
     uniform_buffer: Arc<wgpu::Buffer>,
     sphere_buffer: Arc<wgpu::Buffer>,
+    sphere_capacity: usize,
+    ground_texture: wgpu::TextureView,
+    sky_texture: wgpu::TextureView,
+    image_sampler: wgpu::Sampler,
 }
 
 impl GpuViewport {
     pub fn new(render_state: &egui_wgpu::RenderState) -> Self {
         let device = &render_state.device;
         let uniform_size = std::mem::size_of::<GpuParams>() as u64;
-        let sphere_size = (std::mem::size_of::<GpuSphere>() * MAX_SPHERES) as u64;
+        let sphere_capacity = 1;
+        let sphere_size = std::mem::size_of::<GpuSphere>() as u64;
         let uniform_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ray-tracer-gpu-params"),
             size: uniform_size,
@@ -144,15 +148,20 @@ impl GpuViewport {
         }));
 
         Self {
+            device: device.clone(),
             pipeline,
             bind_group,
             uniform_buffer,
             sphere_buffer,
+            sphere_capacity,
+            ground_texture,
+            sky_texture,
+            image_sampler,
         }
     }
 
     pub fn show(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         world: &mut RenderWorld,
         settings: super::RenderSettings,
@@ -185,6 +194,14 @@ impl GpuViewport {
         }
         let camera = world.camera();
         let scene = world.scene();
+        let scene_sphere_count = scene.spheres.len();
+        self.ensure_sphere_capacity(scene_sphere_count);
+        let sphere_count = scene_sphere_count.min(self.sphere_capacity);
+        if sphere_count < scene_sphere_count {
+            ui.label(format!(
+                "GPU storage limit: showing {sphere_count} of {scene_sphere_count} spheres"
+            ));
+        }
         let plane_material = scene.plane.material;
         let params = GpuParams {
             camera_origin: extend(camera.origin, 0.0),
@@ -198,7 +215,7 @@ impl GpuViewport {
                 rect.height() * pixels_per_point,
             ],
             scene: [
-                scene.spheres.len().min(MAX_SPHERES) as u32,
+                sphere_count as u32,
                 u32::from(settings.shadows_enabled),
                 settings.samples_per_axis.clamp(1, 4) as u32,
                 0,
@@ -223,7 +240,7 @@ impl GpuViewport {
         let spheres = scene
             .spheres
             .iter()
-            .take(MAX_SPHERES)
+            .take(sphere_count)
             .map(|sphere| {
                 let material = sphere.material;
                 GpuSphere {
@@ -256,6 +273,58 @@ impl GpuViewport {
                 spheres,
             },
         ));
+    }
+
+    fn ensure_sphere_capacity(&mut self, needed: usize) {
+        let maximum_capacity = (self.device.limits().max_storage_buffer_binding_size as usize)
+            / std::mem::size_of::<GpuSphere>();
+        if needed <= self.sphere_capacity || self.sphere_capacity >= maximum_capacity {
+            return;
+        }
+        let capacity = needed
+            .checked_next_power_of_two()
+            .unwrap_or(needed)
+            .min(maximum_capacity);
+        let sphere_size = std::mem::size_of::<GpuSphere>() as u64 * capacity as u64;
+        let sphere_buffer = Arc::new(self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ray-tracer-gpu-spheres"),
+            size: sphere_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }));
+        let bind_group = Arc::new(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ray-tracer-gpu-bind-group"),
+            layout: &self.pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &sphere_buffer,
+                        offset: 0,
+                        size: NonZeroU64::new(sphere_size),
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&self.ground_texture),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&self.sky_texture),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&self.image_sampler),
+                },
+            ],
+        }));
+        self.sphere_capacity = capacity;
+        self.sphere_buffer = sphere_buffer;
+        self.bind_group = bind_group;
     }
 }
 
