@@ -1,97 +1,89 @@
-use std::sync::Arc;
-use winit::window::Window;
-
 use crate::camera::Camera;
 use crate::controller::CameraController;
 use crate::cpu_renderer::CpuRenderer;
 use crate::scene::Scene;
 use rayon::prelude::*;
-use std::num::NonZeroU32;
+use winit::keyboard::KeyCode;
 
 pub struct CpuView {
-    surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
     width: u32,
     height: u32,
     camera: Camera,
     scene: Scene,
     renderer: CpuRenderer,
-
     controller: CameraController,
-    frame: Vec<u32>,
+    frame: Vec<u8>,
 }
 
 impl CpuView {
-    pub fn new(window: Arc<Window>, width: u32, height: u32) -> Self {
-        let context = softbuffer::Context::new(window.clone()).unwrap();
-        let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
-
-        let camera = Camera::new(width, height);
-        let scene = Scene::new();
-        let renderer = CpuRenderer::new();
-
+    pub fn new() -> Self {
         Self {
-            surface,
-            width,
-            height,
-            camera,
-            scene,
-            renderer,
+            width: 0,
+            height: 0,
+            camera: Camera::new(1, 1),
+            scene: Scene::new(),
+            renderer: CpuRenderer::new(),
             controller: CameraController::default(),
-            frame: vec![0; width as usize * height as usize],
+            frame: Vec::new(),
         }
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
-        if width == 0 || height == 0 {
-            return;
+    pub fn render_frame(
+        &mut self,
+        width: u32,
+        height: u32,
+        samples_per_axis: u32,
+        dt: f32,
+    ) -> &[u8] {
+        let width = width.max(1);
+        let height = height.max(1);
+        if [width, height] != [self.width, self.height] {
+            self.width = width;
+            self.height = height;
+            self.camera = Camera::new(width, height);
+            self.frame.resize(width as usize * height as usize * 3, 0);
         }
-        self.width = width;
-        self.height = height;
-        self.frame.resize(width as usize * height as usize, 0);
-
-        self.surface
-            .resize(
-                NonZeroU32::new(width).unwrap(),
-                NonZeroU32::new(height).unwrap(),
-            )
-            .unwrap();
-
-        self.camera = Camera::new(width, height);
-    }
-
-    pub fn render_frame(&mut self, dt: f32) {
         self.controller.update(&mut self.camera, dt);
-        let width = self.width;
 
-        // Render CPU frame into a flat u32 buffer (ABGR for softbuffer).
-        let buffer = &mut self.frame;
-
-        // Parallel over rows.
-        buffer
-            .par_chunks_mut(width as usize)
+        let samples_per_axis = samples_per_axis.clamp(1, 4);
+        let sample_count = samples_per_axis * samples_per_axis;
+        self.frame
+            .par_chunks_mut(width as usize * 3)
             .enumerate()
             .for_each(|(y, row)| {
-                let y = y as u32;
-                for (x, pixel) in row.iter_mut().enumerate() {
-                    let x = x as u32;
-                    let ray = self.camera.ray_for_pixel(x, y);
-                    let [r, g, b] = self.renderer.shade_ray(&self.scene, &ray, 0);
-                    // softbuffer expects 0xBBGGRR00 layout (little-endian u32).
-                    *pixel = (b as u32) | ((g as u32) << 8) | ((r as u32) << 16);
+                for (x, pixel) in row.chunks_exact_mut(3).enumerate() {
+                    let mut colour = [0u32; 3];
+                    for sample_y in 0..samples_per_axis {
+                        for sample_x in 0..samples_per_axis {
+                            let offset = [
+                                (sample_x as f32 + 0.5) / samples_per_axis as f32,
+                                (sample_y as f32 + 0.5) / samples_per_axis as f32,
+                            ];
+                            let ray = self.camera.ray_for_sample(x as u32, y as u32, offset);
+                            let sample = self.renderer.shade_ray(&self.scene, &ray, 0);
+                            for (channel, value) in colour.iter_mut().zip(sample) {
+                                *channel += value as u32;
+                            }
+                        }
+                    }
+                    for (out, value) in pixel.iter_mut().zip(colour) {
+                        *out = (value / sample_count) as u8;
+                    }
                 }
             });
 
-        // Present to window.
-        let mut surface_buffer = self.surface.buffer_mut().unwrap();
-        surface_buffer.copy_from_slice(&buffer);
-        surface_buffer.present().unwrap();
+        &self.frame
     }
 
-    pub fn handle_key(&mut self, key_code: winit::keyboard::KeyCode, pressed: bool) {
-        self.controller.set_key(key_code, pressed);
+    pub fn handle_key(&mut self, key: KeyCode, pressed: bool) {
+        self.controller.set_key(key, pressed);
     }
 
-    pub fn handle_mouse_delta(&mut self, delta_x: f32, delta_y: f32) {
-        self.controller.mouse_delta(delta_x, delta_y);
+    pub fn handle_mouse_delta(&mut self, dx: f32, dy: f32) {
+        self.controller.mouse_delta(dx, dy);
+    }
+
+    pub fn set_shadows_enabled(&mut self, enabled: bool) {
+        self.renderer.set_shadows_enabled(enabled);
     }
 }

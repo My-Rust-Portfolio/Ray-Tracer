@@ -3,6 +3,7 @@ use crate::scene::{Hit, HitKind, Scene};
 
 pub struct CpuRenderer {
     pub light_dir: [f32; 3],
+    shadows_enabled: bool,
     sky_image: image::RgbImage,
     sky_width: u32,
     sky_height: u32,
@@ -29,6 +30,7 @@ impl CpuRenderer {
 
         Self {
             light_dir: [dir[0] / len, dir[1] / len, dir[2] / len],
+            shadows_enabled: true,
             sky_image: sky_img,
             sky_width,
             sky_height,
@@ -37,6 +39,10 @@ impl CpuRenderer {
             ground_width,
             ground_height,
         }
+    }
+
+    pub fn set_shadows_enabled(&mut self, enabled: bool) {
+        self.shadows_enabled = enabled;
     }
 
     pub fn shade_ray(&self, scene: &Scene, ray: &Ray, depth: u32) -> [u8; 3] {
@@ -58,7 +64,7 @@ impl CpuRenderer {
         let n = hit.normal;
         let v = [-ray.direction[0], -ray.direction[1], -ray.direction[2]];
 
-        let in_shadow = self.is_in_shadow(scene, hit);
+        let in_shadow = self.shadows_enabled && self.is_in_shadow(scene, hit);
 
         let ndotl =
             (n[0] * self.light_dir[0] + n[1] * self.light_dir[1] + n[2] * self.light_dir[2])
@@ -133,7 +139,7 @@ impl CpuRenderer {
             nl = 0.0;
         }
 
-        let in_shadow = self.is_in_shadow(scene, hit);
+        let in_shadow = self.shadows_enabled && self.is_in_shadow(scene, hit);
         let direct = if in_shadow { 0.0 } else { 0.9 * nl };
         // Keep the ground texture visible inside hard shadows without letting
         // direct light leak through the occluder.

@@ -7,10 +7,17 @@ mod math;
 mod objects;
 mod scene;
 
-fn main() -> Result<(), winit::error::EventLoopError> {
-    let width = 800;
-    let height = 600;
+fn main() -> eframe::Result {
+    let options = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_title("Ray Tracer")
+            .with_inner_size([1100.0, 700.0]),
+        ..Default::default()
+    };
 
-    let app = app::App::new(width, height);
-    app.run()
+    eframe::run_native(
+        "Ray Tracer",
+        options,
+        Box::new(|_creation_context| Ok(Box::<app::App>::default())),
+    )
 }
