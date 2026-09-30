@@ -46,8 +46,8 @@ impl CpuRenderer {
 
         if let Some(hit) = scene.closest_hit(ray) {
             match hit.kind {
-                HitKind::Sphere(_) => self.shade_sphere(scene, &hit, ray, depth),
-                HitKind::Plane(_) => self.shade_plane(&hit),
+                HitKind::Sphere => self.shade_sphere(scene, &hit, ray, depth),
+                HitKind::Plane => self.shade_plane(&hit),
             }
         } else {
             self.sample_sky_dir(ray.direction)

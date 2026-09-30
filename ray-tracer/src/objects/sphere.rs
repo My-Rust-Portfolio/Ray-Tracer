@@ -4,6 +4,10 @@ pub struct Sphere {
 }
 
 impl Sphere {
+    pub fn new(center: [f32; 3], radius: f32) -> Self {
+        Self { center, radius }
+    }
+
     pub fn intersect(&self, ray_origin: [f32; 3], ray_dir: [f32; 3]) -> Option<f32> {
         let oc = [
             ray_origin[0] - self.center[0],
