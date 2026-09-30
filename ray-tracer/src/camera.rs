@@ -52,7 +52,8 @@ impl Camera {
         let cp = self.pitch.cos();
 
         // Forward vector from yaw/pitch
-        let mut forward = [cp * sy, sp, cp * cy];
+        // Keep zero yaw aligned with the camera's default -Z view direction.
+        let mut forward = [cp * sy, sp, -cp * cy];
         let len =
             f32::sqrt(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]);
         forward[0] /= len;
