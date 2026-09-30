@@ -43,6 +43,19 @@ impl CpuBackend {
         }
 
         let samples_per_axis = settings.samples_per_axis.clamp(1, 4);
+        if samples_per_axis == 1 {
+            self.frame
+                .par_chunks_mut(width as usize * 3)
+                .enumerate()
+                .for_each(|(y, row)| {
+                    for (x, pixel) in row.chunks_exact_mut(3).enumerate() {
+                        let ray = camera.ray_for_sample(x as u32, y as u32, [0.5, 0.5]);
+                        pixel.copy_from_slice(&self.shader.shade_ray(scene, &ray, 0, settings));
+                    }
+                });
+            return &self.frame;
+        }
+
         let sample_count = samples_per_axis * samples_per_axis;
         self.frame
             .par_chunks_mut(width as usize * 3)
