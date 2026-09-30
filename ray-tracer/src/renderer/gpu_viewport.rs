@@ -6,6 +6,7 @@ use eframe::egui;
 use eframe::egui_wgpu::{self, wgpu};
 
 use super::world::RenderWorld;
+use crate::ui::viewport_input;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -173,25 +174,7 @@ impl GpuViewport {
             (rect.width() * pixels_per_point).round() as u32,
             (rect.height() * pixels_per_point).round() as u32,
         );
-        response.request_focus();
-        if response.dragged() {
-            let delta = ui.input(|input| input.pointer.delta());
-            world.mouse_delta(delta.x, delta.y);
-        }
-        if response.has_focus() || response.hovered() {
-            ui.input(|input| {
-                for (key, code) in [
-                    (egui::Key::W, winit::keyboard::KeyCode::KeyW),
-                    (egui::Key::A, winit::keyboard::KeyCode::KeyA),
-                    (egui::Key::S, winit::keyboard::KeyCode::KeyS),
-                    (egui::Key::D, winit::keyboard::KeyCode::KeyD),
-                    (egui::Key::Space, winit::keyboard::KeyCode::Space),
-                ] {
-                    world.set_key(code, input.key_down(key));
-                }
-                world.set_key(winit::keyboard::KeyCode::ControlLeft, input.modifiers.ctrl);
-            });
-        }
+        viewport_input::handle(ui, &response, world);
         let camera = world.camera();
         let scene = world.scene();
         let scene_sphere_count = scene.spheres.len();
