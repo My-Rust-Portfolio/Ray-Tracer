@@ -1,13 +1,27 @@
 use eframe::egui;
 
-use crate::renderer::RenderSettings;
+use crate::renderer::{RenderSettings, ViewMode};
 
-pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, fps: f32) {
+pub fn show(ui: &mut egui::Ui, settings: &mut RenderSettings, mode: &mut ViewMode, fps: f32) {
     ui.heading("Ray tracer");
     ui.separator();
-    ui.label("Rendering backend");
-    ui.label("CPU · active");
-    ui.add_enabled(false, egui::Button::new("GPU · coming later"));
+    ui.label("Rendering path");
+    egui::ComboBox::from_id_salt("rendering-path")
+        .selected_text(match mode {
+            ViewMode::Cpu => "CPU ray tracer",
+            ViewMode::GpuPresentationPreview => "GPU presentation preview",
+        })
+        .show_ui(ui, |ui| {
+            ui.selectable_value(mode, ViewMode::Cpu, "CPU ray tracer");
+            ui.selectable_value(
+                mode,
+                ViewMode::GpuPresentationPreview,
+                "GPU presentation preview",
+            );
+        });
+    if *mode == ViewMode::GpuPresentationPreview {
+        ui.small("Direct GPU drawing preview; ray tracing is not implemented yet.");
+    }
 
     ui.add_space(16.0);
     ui.label("Performance");

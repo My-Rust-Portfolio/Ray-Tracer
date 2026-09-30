@@ -2,25 +2,32 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use crate::renderer::{RenderSettings, cpu::CpuView};
+use crate::renderer::{RenderSettings, ViewMode, cpu::CpuView, gpu_viewport::GpuViewport};
 use crate::ui::{settings_panel, viewport::Viewport};
 
 pub struct App {
     cpu_view: CpuView,
     viewport: Viewport,
+    gpu_viewport: Option<GpuViewport>,
     settings: RenderSettings,
+    view_mode: ViewMode,
     last_frame: Instant,
     fps_elapsed: f32,
     fps_frames: u32,
     fps: f32,
 }
 
-impl Default for App {
-    fn default() -> Self {
+impl App {
+    pub fn new(creation_context: &eframe::CreationContext<'_>) -> Self {
         Self {
             cpu_view: CpuView::new(),
             viewport: Viewport::default(),
+            gpu_viewport: creation_context
+                .wgpu_render_state
+                .as_ref()
+                .map(GpuViewport::new),
             settings: RenderSettings::default(),
+            view_mode: ViewMode::default(),
             last_frame: Instant::now(),
             fps_elapsed: 0.0,
             fps_frames: 0,
@@ -48,12 +55,20 @@ impl eframe::App for App {
             .resizable(false)
             .default_size(230.0)
             .show(root, |ui| {
-                settings_panel::show(ui, &mut self.settings, self.fps)
+                settings_panel::show(ui, &mut self.settings, &mut self.view_mode, self.fps)
             });
 
-        egui::CentralPanel::default().show(root, |ui| {
-            self.viewport
-                .show(ui, &mut self.cpu_view, self.settings, dt);
+        egui::CentralPanel::default().show(root, |ui| match self.view_mode {
+            ViewMode::Cpu => self
+                .viewport
+                .show(ui, &mut self.cpu_view, self.settings, dt),
+            ViewMode::GpuPresentationPreview => {
+                if let Some(gpu_viewport) = &self.gpu_viewport {
+                    gpu_viewport.show(ui);
+                } else {
+                    ui.label("wgpu is unavailable on this device.");
+                }
+            }
         });
         ctx.request_repaint_after(Duration::from_millis(16));
     }

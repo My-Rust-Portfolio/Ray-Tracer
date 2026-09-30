@@ -1,4 +1,12 @@
 pub mod cpu;
+pub mod gpu_viewport;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ViewMode {
+    #[default]
+    Cpu,
+    GpuPresentationPreview,
+}
 
 /// Backend-independent controls consumed by every renderer implementation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -19,6 +19,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Ray Tracer",
         options,
-        Box::new(|_creation_context| Ok(Box::<app::App>::default())),
+        Box::new(|creation_context| Ok(Box::new(app::App::new(creation_context)))),
     )
 }
