@@ -53,6 +53,5 @@ The release profile is recommended when comparing renderer performance. FPS depe
 
 ## Demonstration
 
-Video demonstration coming soon.
-
-<!-- Add the uploaded demonstration video or link here. -->
+![First GIF](first.gif)
+![Second GIF](second.gif)
